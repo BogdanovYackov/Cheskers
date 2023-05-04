@@ -1,4 +1,3 @@
-
 from flask import Flask, redirect, url_for, request, Response
 def createApp():
     app = Flask(__name__)
@@ -86,9 +85,9 @@ def createApp():
                     <big><big>Famous opponent</big></big></button></p>
                     <p></p><p>Game id:</p>
                     <p><input type = "int" style="width:160px;" name = "game" /></p>
-                    <p><button type="submit" value="wait" name="start"/>
+                    <p><button type="submit" value="join" name="start"/>
                     <big><big>Join with id</big></big></button></p>
-                    {"<p>Game isn't started</p>" if error == 'gid' else ''}
+                    {"<p>Game isn't started</p>" if error else ''}
                     </big></big></form></div></body></html>'''
 
     def newGame(name, tp, start):
@@ -110,7 +109,7 @@ def createApp():
             gid = newGame(name, tp, start)
             info['games'][gid][1] = name
             info['result'][gid][1] = name
-        elif ((info[tp] == None) and (start == 'random')) or (not gid and (start == 'wait')):
+        elif ((info[tp] is None) and (start == 'random')) or (not gid and (start == 'wait')):
             gid = newGame(name, tp, start)
             if start == 'random':
                 info[tp] = gid
@@ -120,17 +119,20 @@ def createApp():
             info['games'][gid][1] = name
             info['result'][gid][1] = name
         elif gid not in info['games']:
-            return redirect(url_for('menu', error = 'gid', password = password, tp = tp))
+            return redirect(url_for('menu', name = name, password = password, tp = tp, error = 'error'))
         elif info['games'][gid][1] is None:
             info['games'][gid][1] = name
             info['result'][gid][1] = name
+            if info[info['games'][gid]['type']] == gid:
+                info[info['games'][gid]['type']] = None
         return redirect(url_for('game', name = name, password = password, gid = gid, tp = tp))
 
-    @app.route('/menu/<string:name>/<string:password>/<string:tp>', methods = ['POST', 'GET'])
-    def menu(name, password, tp):
+    @app.route('/menu/<string:name>/<string:password>/<string:tp>', defaults={'error':''}, methods = ['POST', 'GET'])
+    @app.route('/menu/<string:name>/<string:password>/<string:tp>/<string:error>', methods = ['POST', 'GET'])
+    def menu(name, password, tp, error):
         red = checkUser(name, password)
         if red or request.method == 'GET':
-            return red or menuPage(tp, '')
+            return red or menuPage(tp, error)
         if request.form.get('type'):
             tp = request.form.get('type')
             return redirect(url_for('menu', name = name, password = password, tp = tp))
@@ -221,30 +223,41 @@ def createApp():
             if pos - i * 56 in (7, 4):
                 gm['castling'][2 * i + 1] = 0
 
-    def recheckShah(field, pos1, pos2):
-        var = field[pos2]
-        field[pos2] = field[pos1]
-        field[pos1] = '20'
-        shah = chessAttack(gm, findKing(gm, act), 1 - act)
-        field[pos1] = field[pos2]
-        field[pos2] = var
-        return shah
+    def recheckShah(gm, field, pos1, pos2, act):
+        if gm['type'] == 'chess':
+            var = field[pos2]
+            field[pos2] = field[pos1]
+            field[pos1] = '20'
+            shah = chessAttack(gm, findKing(gm, act), 1 - act)
+            field[pos1] = field[pos2]
+            field[pos2] = var
+            return shah
+    def checkAllMoves(gm, field, act):
+        for pos1 in range(64):
+            if field[pos1][0] == str(act):
+                for pos2 in range(64):
+                    if ((field[pos2][0] != str(act)) and checkMove(gm, field, pos1, pos2, act)
+                        and not recheckShah(gm, field, pos1, pos2, act)):
+                        return True
+    def checkChessWin(gm, field, act):
+        if gm['type'] == 'chess':
+            checkShah(gm, 1 - act)
+            if not checkAllMoves(gm, field, 1 - act):
+                info['result'][gm['id']][2] = 1 + act if gm['highlight'][0] else 3
+                return endGame(gm[act], gm['id'])
     def chessMove(gm, pos1, pos2):
         field = gm['field']
         act = gm['act']
-        gm['debug'] = [pos1, pos2]
-        if checkMove(gm, field, pos1, pos2, act):# and (gm['type'] != 'chess' or recheckShah(field, pos1, pos2)):
+        if checkMove(gm, field, pos1, pos2, act):
             if field[pos2][1] == "k":
                 info['result'][gm['id']][2] = 1 + act
                 return endGame(gm[act], gm['id'])
+            if recheckShah(gm, field, pos1, pos2, act):
+                return
             var = field[pos2]
             field[pos2] = field[pos1]
             field[pos1] = '20'
             if gm['type'] == 'chess':
-                if chessAttack(gm, findKing(gm, act), 1 - act):
-                    field[pos1] = field[pos2]
-                    field[pos2] = var
-                    return
                 castlingRecheck(gm, pos1)
                 castlingRecheck(gm, pos2)
                 if gm['passant'][0] == pos2:
@@ -252,11 +265,10 @@ def createApp():
             gm['choice'] = (field[pos2][1] == "p") and (pos2 // 8 == 7 * act)
             if (field[pos2][1] == "p") and (abs(pos2 - pos1) == 16):
                 gm['passant'] = ((pos1 + pos2) // 2, act)
-            gm['debug'] += ["qwer", gm['choice']]
             if gm['choice']:
                 return endMove(gm, pos2, act)
-            else:
-                return endMove(gm, -1, 1 - act)
+            checkChessWin(gm, field, act)
+            return endMove(gm, -1, 1 - act)
 
     def chessAttack(gm, pos2, act):
         field = gm['field']
@@ -361,6 +373,9 @@ def createApp():
             gm['highlight'][1] = set()
             for pos1 in gm['highlight'][0]:
                 gm['highlight'][1] |= set(cellsBetween(pos1, pos2))
+            if 'debug' not in gm:
+                gm['debug'] = []
+            gm['debug'] += gm['highlight']
 
     def endMove(gm, pos1, act):
         field = gm['field']
@@ -382,7 +397,6 @@ def createApp():
             gm['fix'] = 0
             gm['choice'] = 0
             gm['eat'] = checkNextMoves(gm, field, act)
-            checkShah(gm, act)
         gm['move'] = pos1
 
     def endRequest(name, gid, end):
@@ -493,6 +507,9 @@ def createApp():
         if choice:
             gm['field'][gm['move']] = choice
             gm['choice'] = 0
+            red = checkChessWin(gm, gm['field'], gm['act'])
+            if red:
+                return red
             endMove(gm, -1, 1 - gm['act'])
 
     def castling(gm, pos1, pos2, act):
@@ -542,7 +559,7 @@ def createApp():
         red = red or endRequest(name, gid, request.form.get('endGame'))
         if red:
             return red
-        choose(name, gm, request.form.get('choice'))
-        red = startMove(name, gm)
+        red = choose(name, gm, request.form.get('choice'))
+        red = red or startMove(name, gm)
         return red or gamePage(name, gid)
     return app
