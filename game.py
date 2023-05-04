@@ -4,7 +4,7 @@ def createApp():
     app = Flask(__name__)
     
     #Данные игры
-    info = {'users':{'':''}, 'games':{}, 'result':{}, 'NGId':1, 'chess':None, 'checkers':None}
+    info = {'users':{'':''}, 'games':{}, 'result':{}, 'NGId':1, 'chess':None, 'cheskers':None, 'checkers':None}
     
     #стартовые позиции
     chess = (['1r','1h','1b','1q','1k','1b','1h','1r'] + ['1p']*8 +
@@ -37,10 +37,6 @@ def createApp():
     colorName = {'0':'White ', '1':'Black ', '2':''}
     figName = {'m':'man',  'd':'king',   'l':'king',   'c':'camel', 'p':'pawn',  
                'r':'rook', 'h':'knight', 'b':'bishop', 'q':'queen', 'k':'king', '0':''}
-
-    @app.route('/info')
-    def inf():
-        return f'''<html><body><p>{info}</p></body></html>'''
 
     @app.route('/')
     def root():
@@ -550,14 +546,3 @@ def createApp():
         red = startMove(name, gm)
         return red or gamePage(name, gid)
     return app
-
-if __name__ == '__main__':
-    localhost = True
-    if localhost:
-        createApp().run("localhost", 5000)
-    else:
-        #!pip install pyngrok
-        from flask_ngrok import run_with_ngrok
-        app = createApp()
-        run_with_ngrok(app)
-        app.run()
